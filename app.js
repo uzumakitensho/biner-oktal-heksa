@@ -633,7 +633,7 @@ const QUESTION_BANKS = {
   ],
   okt: [
     {q:"Sistem oktal menggunakan angka dari...", opts:["0-6","0-7","0-8","1-8"], a:1},
-    {q:"Bilangan oktal 12 sama dengan desimal...", opts:["8","9","10","12"], a:1},
+    {q:"Bilangan oktal 12 sama dengan desimal...", opts:["8","9","10","12"], a:2},
     {q:"Bilangan desimal 16 dalam oktal adalah...", opts:["16","17","20","21"], a:2},
     {q:"Sistem oktal biasa dipakai untuk menulis...", opts:["kode warna","hak akses file Unix/Linux","alamat IP","not musik"], a:1},
     {q:"Nilai 8² dalam sistem oktal sama dengan...", opts:["16","32","64","128"], a:2},
