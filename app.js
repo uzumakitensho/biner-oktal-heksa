@@ -85,7 +85,7 @@ function saveIdentity(){
    header CORS — respons tidak bisa dibaca, tapi datanya tetap
    sampai dan tersimpan di Google Sheet.
 ============================================================ */
-function sendScoreToTeacher(level, correct, total, xpGain){
+function sendScoreToTeacher(level, correct, total, xpGain, passed){
   if(!GOOGLE_SCRIPT_URL) return;
   const id = getIdentity() || {nama:"(tanpa nama)", kelas:"-"};
   const payload = {
@@ -94,6 +94,7 @@ function sendScoreToTeacher(level, correct, total, xpGain){
     level: level,
     benar: correct,
     total: total,
+    lulus: !!passed,
     xpDidapat: xpGain,
     totalXP: state.xp,
     waktu: new Date().toISOString()
@@ -104,6 +105,127 @@ function sendScoreToTeacher(level, correct, total, xpGain){
     headers:{"Content-Type":"text/plain"},
     body: JSON.stringify(payload)
   }).catch(()=>{ /* diam saja kalau gagal, jangan ganggu murid */ });
+}
+
+/* ============================================================
+   PEMULIHAN PROGRES — CARA 1: AMBIL OTOMATIS DARI GOOGLE SHEET
+   Meminta rekap murid (berdasarkan nama+kelas) lewat permintaan
+   GET ke Apps Script (perlu fungsi doGet, lihat panduan guru),
+   lalu merekonstruksi status level & XP dari data yang ditemukan.
+============================================================ */
+function applyLevelState(newState){
+  state = newState;
+  saveState();
+  renderMap();
+}
+function recomputeUnlockedFromCompleted(completed){
+  return {
+    bit: true,
+    okt: !!completed.bit,
+    hex: !!completed.okt,
+    boss: !!completed.hex
+  };
+}
+async function tryRestoreFromServer(){
+  const nama = document.getElementById("idNama").value.trim();
+  const kelas = document.getElementById("idKelas").value.trim();
+  const fb = document.getElementById("idRestoreFeedback");
+  if(!nama || !kelas){
+    fb.textContent = "Isi nama dan kelas dulu di atas, ya.";
+    fb.className = "feedback bad";
+    return;
+  }
+  if(!GOOGLE_SCRIPT_URL){
+    fb.textContent = "Fitur ini belum diaktifkan gurumu. Coba pakai Kode Pemulihan di bawah.";
+    fb.className = "feedback bad";
+    return;
+  }
+  fb.textContent = "Mencari data...";
+  fb.className = "feedback";
+  try{
+    const url = GOOGLE_SCRIPT_URL + "?nama=" + encodeURIComponent(nama) + "&kelas=" + encodeURIComponent(kelas);
+    const res = await fetch(url, { method:"GET" });
+    const rows = await res.json();
+    if(!Array.isArray(rows) || rows.length === 0){
+      fb.textContent = "Data belum ditemukan. Pastikan nama & kelas sama persis seperti sebelumnya, atau pakai Kode Pemulihan.";
+      fb.className = "feedback bad";
+      return;
+    }
+    const completed = {bit:false, okt:false, hex:false, boss:false};
+    let maxXP = 0;
+    rows.forEach(r=>{
+      if(r.lulus && completed.hasOwnProperty(r.level)) completed[r.level] = true;
+      if(typeof r.totalXP === "number" && r.totalXP > maxXP) maxXP = r.totalXP;
+    });
+    applyLevelState({
+      xp: Math.min(TOTAL_XP, maxXP),
+      completed: completed,
+      unlocked: recomputeUnlockedFromCompleted(completed)
+    });
+    try{ localStorage.setItem("petadigital_identitas", JSON.stringify({nama,kelas})); }catch(e){}
+    document.getElementById("idOverlay").classList.remove("show");
+    showToast("✅ Progres berhasil dipulihkan dari server!");
+  }catch(e){
+    fb.textContent = "Gagal mengambil data (cek koneksi internet). Coba pakai Kode Pemulihan di bawah.";
+    fb.className = "feedback bad";
+  }
+}
+
+/* ============================================================
+   PEMULIHAN PROGRES — CARA 2: KODE PEMULIHAN (OFFLINE)
+   Kode singkat hasil encode dari status XP & level yang lulus.
+   Tidak butuh internet maupun setup Google Sheet — murid tinggal
+   menyalin kode dari perangkat lama dan menempelkannya di
+   perangkat baru.
+============================================================ */
+function generateRecoveryCode(){
+  try{
+    const payload = { x: state.xp, c: state.completed };
+    return btoa(encodeURIComponent(JSON.stringify(payload)));
+  }catch(e){ return ""; }
+}
+function showRecoveryCode(){
+  const code = generateRecoveryCode();
+  navigator.clipboard.writeText(code).then(()=>{
+    showToast("🔑 Kode pemulihan disalin! Simpan baik-baik untuk perangkat lain.");
+  }).catch(()=>{
+    showToast("🔑 Kode kamu: " + code);
+  });
+}
+function tryRestoreFromCode(){
+  const input = document.getElementById("idRecoveryCodeInput");
+  const fb = document.getElementById("idCodeFeedback");
+  const code = input.value.trim();
+  const nama = document.getElementById("idNama").value.trim();
+  const kelas = document.getElementById("idKelas").value.trim();
+  if(!code){
+    fb.textContent = "Tempel kode pemulihan dulu, ya.";
+    fb.className = "feedback bad";
+    return;
+  }
+  if(!nama || !kelas){
+    fb.textContent = "Isi nama dan kelas dulu di atas, ya.";
+    fb.className = "feedback bad";
+    return;
+  }
+  try{
+    const payload = JSON.parse(decodeURIComponent(atob(code)));
+    if(typeof payload.x !== "number" || typeof payload.c !== "object") throw new Error("format tidak valid");
+    const completed = {
+      bit: !!payload.c.bit, okt: !!payload.c.okt, hex: !!payload.c.hex, boss: !!payload.c.boss
+    };
+    applyLevelState({
+      xp: Math.min(TOTAL_XP, payload.x),
+      completed: completed,
+      unlocked: recomputeUnlockedFromCompleted(completed)
+    });
+    try{ localStorage.setItem("petadigital_identitas", JSON.stringify({nama,kelas})); }catch(e){}
+    document.getElementById("idOverlay").classList.remove("show");
+    showToast("✅ Progres berhasil dipulihkan dari kode!");
+  }catch(e){
+    fb.textContent = "Kode tidak valid. Pastikan disalin lengkap tanpa terpotong.";
+    fb.className = "feedback bad";
+  }
 }
 
 /* ============================================================
@@ -600,7 +722,7 @@ function finishQuiz(){
   let xpGain = correct*10 + (passed?20:0);
   awardXP(xpGain);
   if(passed) markComplete(level, nextMap[level]);
-  sendScoreToTeacher(meta.title, correct, total, xpGain);
+  sendScoreToTeacher(level, correct, total, xpGain, passed);
 
   panelEl.innerHTML = `
     ${panelHeadHTML("HASIL", meta.title, meta.color)}
@@ -695,7 +817,7 @@ function finishBoss(timedOut){
   const xpGain = correct*8 + (passed?40:0);
   awardXP(xpGain);
   if(passed) markComplete("boss", null);
-  sendScoreToTeacher("Tantangan Campuran", correct, total, xpGain);
+  sendScoreToTeacher("boss", correct, total, xpGain, passed);
 
   panelEl.innerHTML = `
     ${panelHeadHTML("HASIL AKHIR","Tantangan Campuran", "boss")}

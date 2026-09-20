@@ -30,6 +30,7 @@
     <div class="sb-bar"><div class="sb-fill" id="sbFill"></div></div>
     <span class="sb-xp" id="sbXp">0 / 400 XP</span>
     <button class="btn btn-ghost" style="padding:8px 14px;font-size:13px;white-space:nowrap;" onclick="copyRecap()">📋 Salin Rekap</button>
+    <button class="btn btn-ghost" style="padding:8px 14px;font-size:13px;white-space:nowrap;" onclick="showRecoveryCode()">🔑 Kode Saya</button>
   </div>
 </div>
 
@@ -90,7 +91,7 @@
 
 <!-- ===================== MODAL IDENTITAS MURID ===================== -->
 <div class="overlay" id="idOverlay">
-  <div class="panel" style="max-width:420px;">
+  <div class="panel" style="max-width:440px;">
     <div class="panel-head">
       <div><span class="eyebrow" style="color:var(--bit)">SEBELUM MULAI</span><h2>Siapa nama kamu?</h2></div>
     </div>
@@ -101,7 +102,20 @@
         <input type="text" id="idKelas" placeholder="Kelas (contoh: 8A)" style="width:100%;">
       </div>
       <div class="feedback bad" id="idError"></div>
-      <div class="row-btn"><button class="btn btn-primary" onclick="saveIdentity()">Mulai Belajar</button></div>
+      <div class="row-btn"><button class="btn btn-primary" onclick="saveIdentity()">Mulai dari Awal</button></div>
+
+      <h4 style="margin-top:24px;">Pernah mengerjakan di perangkat lain?</h4>
+      <p>Isi nama &amp; kelas di atas dengan data yang sama seperti sebelumnya, lalu pilih salah satu cara pemulihan berikut.</p>
+      <div class="row-btn">
+        <button class="btn btn-ghost" onclick="tryRestoreFromServer()" id="idRestoreServerBtn">🔄 Ambil Progres Otomatis</button>
+      </div>
+      <div class="feedback" id="idRestoreFeedback"></div>
+
+      <div class="converter" style="margin-top:14px;">
+        <input type="text" id="idRecoveryCodeInput" placeholder="atau tempel Kode Pemulihan di sini" style="flex:1;">
+        <button class="btn btn-ghost" onclick="tryRestoreFromCode()">Terapkan Kode</button>
+      </div>
+      <div class="feedback" id="idCodeFeedback"></div>
     </div>
   </div>
 </div>
