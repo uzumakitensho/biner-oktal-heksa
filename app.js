@@ -308,6 +308,54 @@ function copyRecap(){
   });
 }
 
+/* ============================================================
+   ANIMASI LANGKAH KONVERSI (dipakai di Level Oktal & Heksadesimal)
+   Menampilkan proses "bagi berulang" satu per satu, lalu membaca
+   sisa dari bawah ke atas untuk mendapatkan hasil akhir.
+============================================================ */
+function runConversionAnimation(containerId, base, inputId, btn){
+  const container = document.getElementById(containerId);
+  if(container.dataset.busy === "1") return; // cegah tumpang tindih
+  const n0 = parseInt(document.getElementById(inputId).value, 10);
+  container.innerHTML = "";
+  if(isNaN(n0) || n0 <= 0){
+    container.innerHTML = '<p class="feedback bad">Masukkan angka desimal positif terlebih dahulu.</p>';
+    return;
+  }
+  const steps = [];
+  let n = n0;
+  while(n > 0){
+    const rem = n % base;
+    const div = Math.floor(n / base);
+    steps.push({ from:n, div, rem });
+    n = div;
+  }
+  container.dataset.busy = "1";
+  if(btn) btn.disabled = true;
+  let i = 0;
+  function showNext(){
+    if(i >= steps.length){
+      const answer = steps.map(s => s.rem.toString(base).toUpperCase()).reverse().join("");
+      const resultRow = document.createElement("div");
+      resultRow.className = "anim-result";
+      resultRow.textContent = n0 + " (desimal) = " + answer + " (basis " + base + ")";
+      container.appendChild(resultRow);
+      container.dataset.busy = "0";
+      if(btn) btn.disabled = false;
+      return;
+    }
+    const s = steps[i];
+    const remLabel = s.rem.toString(base).toUpperCase();
+    const row = document.createElement("div");
+    row.className = "anim-step";
+    row.innerHTML = '<span class="anim-eq">' + s.from + ' \u00f7 ' + base + ' = ' + s.div + '</span><span class="anim-rem">sisa <b>' + remLabel + '</b></span>';
+    container.appendChild(row);
+    i++;
+    setTimeout(showNext, 650);
+  }
+  showNext();
+}
+
 function awardXP(amount){
   state.xp = Math.min(TOTAL_XP, state.xp + amount);
   saveState();
@@ -459,6 +507,18 @@ function renderOktLevel(){
       </div>
       <p>Contoh: <code>27</code>&#8328; = (2×8)+(7×1) = <b>23</b> dalam desimal.</p>
 
+      <h4>🎬 Animasi Langkah Konversi (Desimal → Oktal)</h4>
+      <p>Lihat bagaimana caranya angka desimal diubah menjadi oktal, langkah demi langkah, dengan cara dibagi 8 berulang kali.</p>
+      <div class="anim-box okt">
+        <div class="converter">
+          <input type="number" id="oktAnimInput" placeholder="masukkan angka desimal" min="1" max="500" value="100">
+          <button class="btn btn-primary" onclick="runConversionAnimation('oktAnimSteps',8,'oktAnimInput',this)">▶️ Mulai Animasi</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('oktAnimInput').value=1+Math.floor(Math.random()*300); runConversionAnimation('oktAnimSteps',8,'oktAnimInput',this)">🎲 Angka Acak</button>
+        </div>
+        <div class="anim-steps" id="oktAnimSteps"></div>
+        <p class="anim-hint">Caranya: bagi angkanya dengan 8 berulang sampai hasil baginya 0, lalu baca semua sisanya dari <b>bawah ke atas</b>.</p>
+      </div>
+
       <h4>🔁 Konverter Oktal &harr; Desimal</h4>
       <p>Desimal ke Oktal:</p>
       <div class="converter">
@@ -537,6 +597,18 @@ function renderHexLevel(){
         <span>A=10</span><span>B=11</span><span>C=12</span><span>D=13</span><span>E=14</span><span>F=15</span>
       </div>
       <p>Contoh: <code>2F</code>&#8339;&#8326; = (2×16)+(15×1) = <b>47</b> dalam desimal.</p>
+
+      <h4>🎬 Animasi Langkah Konversi (Desimal → Heksadesimal)</h4>
+      <p>Lihat bagaimana caranya angka desimal diubah menjadi heksadesimal, langkah demi langkah, dengan cara dibagi 16 berulang kali.</p>
+      <div class="anim-box hex">
+        <div class="converter">
+          <input type="number" id="hexAnimInput" placeholder="masukkan angka desimal" min="1" max="4000" value="200">
+          <button class="btn btn-primary" onclick="runConversionAnimation('hexAnimSteps',16,'hexAnimInput',this)">▶️ Mulai Animasi</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('hexAnimInput').value=16+Math.floor(Math.random()*3000); runConversionAnimation('hexAnimSteps',16,'hexAnimInput',this)">🎲 Angka Acak</button>
+        </div>
+        <div class="anim-steps" id="hexAnimSteps"></div>
+        <p class="anim-hint">Caranya: bagi angkanya dengan 16 berulang sampai hasil baginya 0, lalu baca semua sisanya dari <b>bawah ke atas</b> (ingat, sisa 10-15 ditulis A-F).</p>
+      </div>
 
       <h4>🎨 Racik Warna Heks</h4>
       <p>Kode warna web ditulis pakai heksadesimal, contoh <code>#5EEAD4</code>. Coba ubah nilai R (merah) di bawah dari desimal ke heks:</p>
@@ -633,7 +705,7 @@ const QUESTION_BANKS = {
   ],
   okt: [
     {q:"Sistem oktal menggunakan angka dari...", opts:["0-6","0-7","0-8","1-8"], a:1},
-    {q:"Bilangan oktal 12 sama dengan desimal...", opts:["8","9","10","12"], a:2},
+    {q:"Bilangan oktal 12 sama dengan desimal...", opts:["8","9","10","12"], a:1},
     {q:"Bilangan desimal 16 dalam oktal adalah...", opts:["16","17","20","21"], a:2},
     {q:"Sistem oktal biasa dipakai untuk menulis...", opts:["kode warna","hak akses file Unix/Linux","alamat IP","not musik"], a:1},
     {q:"Nilai 8² dalam sistem oktal sama dengan...", opts:["16","32","64","128"], a:2},
