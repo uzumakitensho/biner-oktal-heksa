@@ -18,7 +18,12 @@ const LEVEL_META = {
   hex:  {title:"Bilangan Heksadesimal", color:"hex", xpMax:100},
   boss: {title:"Tantangan Campuran", color:"boss", xpMax:100}
 };
-const TOTAL_XP = 400;
+// XP maksimum kuis per level bila lulus sekali dengan nilai sempurna
+// (5 soal x 10 + bonus lulus 20 = 70; boss: 8 soal x 8 + bonus lulus 40 = 104)
+const QUIZ_FULL_XP = {bit:70, okt:70, hex:70, boss:104};
+// Total XP maksimum yang benar-benar bisa dicapai lewat jalur bersih:
+// 3 x 70 (kuis level) + 104 (kuis boss) + 5 x 5 (lima latihan, sekali per latihan) = 339
+const TOTAL_XP = 339;
 
 let state = loadState();
 
@@ -26,7 +31,12 @@ function defaultState(){
   return {
     xp:0,
     completed:{bit:false, okt:false, hex:false, boss:false},
-    unlocked:{bit:true, okt:false, hex:false, boss:false}
+    unlocked:{bit:true, okt:false, hex:false, boss:false},
+    // penanda supaya XP latihan hanya diberikan sekali per jenis latihan
+    practiceDone:{bit:false, oktDec:false, oktOct:false, hexColor:false, hexDec:false},
+    // XP kuis terbaik yang pernah dicapai per level, supaya mengulang kuis
+    // tidak menambah XP kecuali hasilnya benar-benar lebih baik dari sebelumnya
+    bestQuizXP:{bit:0, okt:0, hex:0, boss:0}
   };
 }
 function loadState(){
@@ -35,7 +45,14 @@ function loadState(){
     if(!raw) return defaultState();
     const parsed = JSON.parse(raw);
     if(!parsed || typeof parsed.xp !== "number") return defaultState();
-    return parsed;
+    const def = defaultState();
+    return {
+      xp: parsed.xp,
+      completed: Object.assign({}, def.completed, parsed.completed || {}),
+      unlocked: Object.assign({}, def.unlocked, parsed.unlocked || {}),
+      practiceDone: Object.assign({}, def.practiceDone, parsed.practiceDone || {}),
+      bestQuizXP: Object.assign({}, def.bestQuizXP, parsed.bestQuizXP || {})
+    };
   }catch(e){ return defaultState(); }
 }
 function saveState(){
@@ -160,7 +177,9 @@ async function tryRestoreFromServer(){
     applyLevelState({
       xp: Math.min(TOTAL_XP, maxXP),
       completed: completed,
-      unlocked: recomputeUnlockedFromCompleted(completed)
+      unlocked: recomputeUnlockedFromCompleted(completed),
+      bestQuizXP: inferBestQuizXP(completed),
+      practiceDone: {bit:true, oktDec:true, oktOct:true, hexColor:true, hexDec:true}
     });
     try{ localStorage.setItem("petadigital_identitas", JSON.stringify({nama,kelas})); }catch(e){}
     document.getElementById("idOverlay").classList.remove("show");
@@ -217,7 +236,9 @@ function tryRestoreFromCode(){
     applyLevelState({
       xp: Math.min(TOTAL_XP, payload.x),
       completed: completed,
-      unlocked: recomputeUnlockedFromCompleted(completed)
+      unlocked: recomputeUnlockedFromCompleted(completed),
+      bestQuizXP: inferBestQuizXP(completed),
+      practiceDone: {bit:true, oktDec:true, oktOct:true, hexColor:true, hexDec:true}
     });
     try{ localStorage.setItem("petadigital_identitas", JSON.stringify({nama,kelas})); }catch(e){}
     document.getElementById("idOverlay").classList.remove("show");
@@ -361,6 +382,24 @@ function awardXP(amount){
   saveState();
   renderMap();
 }
+// Memberi XP latihan hanya sekali per jenis latihan (dicegah lewat practiceDone).
+// Mengembalikan true jika XP baru saja diberikan, false jika sudah pernah.
+function awardPracticeXPOnce(key, amount){
+  if(state.practiceDone[key]) return false;
+  state.practiceDone[key] = true;
+  awardXP(amount);
+  return true;
+}
+// Dipakai saat pemulihan progres (server/kode): menaksir XP kuis terbaik
+// dari status lulus, supaya kuis yang sudah lulus tidak bisa "dipanen" lagi.
+function inferBestQuizXP(completed){
+  return {
+    bit: completed.bit ? QUIZ_FULL_XP.bit : 0,
+    okt: completed.okt ? QUIZ_FULL_XP.okt : 0,
+    hex: completed.hex ? QUIZ_FULL_XP.hex : 0,
+    boss: completed.boss ? QUIZ_FULL_XP.boss : 0
+  };
+}
 function markComplete(level, nextLevel){
   if(!state.completed[level]){
     state.completed[level] = true;
@@ -483,9 +522,9 @@ function newBitChallenge(){
 function checkBitChallenge(){
   const fb = document.getElementById("bitChallengeFeedback");
   if(currentBitDecimal() === bitTargetValue){
-    fb.textContent = "✅ Tepat! " + bitTargetValue + " = " + bitState.join("") + " dalam biner.";
+    const dapatXP = awardPracticeXPOnce("bit", 5);
+    fb.textContent = "✅ Tepat! " + bitTargetValue + " = " + bitState.join("") + " dalam biner." + (dapatXP ? "" : " (XP latihan ini sudah pernah kamu dapat)");
     fb.className = "feedback ok";
-    awardXP(5);
   } else {
     fb.textContent = "❌ Belum pas. Nilai saklar sekarang: " + currentBitDecimal() + ". Coba lagi!";
     fb.className = "feedback bad";
@@ -564,8 +603,9 @@ function checkOktFromDec(){
   const fb = document.getElementById("oktFeedback1");
   const correct = oktDecTarget.toString(8);
   if(ans === correct){
-    fb.textContent = "✅ Benar! "+oktDecTarget+" = "+correct+" (oktal).";
-    fb.className="feedback ok"; awardXP(5);
+    const dapatXP = awardPracticeXPOnce("oktDec", 5);
+    fb.textContent = "✅ Benar! "+oktDecTarget+" = "+correct+" (oktal)." + (dapatXP ? "" : " (XP latihan ini sudah pernah kamu dapat)");
+    fb.className="feedback ok";
   } else {
     fb.textContent = "❌ Belum tepat. Coba hitung lagi ("+oktDecTarget+" ÷ 8 berulang).";
     fb.className="feedback bad";
@@ -576,8 +616,9 @@ function checkOktFromOct(){
   const fb = document.getElementById("oktFeedback2");
   const correct = parseInt(oktOctTarget,8);
   if(+ans === correct){
-    fb.textContent = "✅ Benar! "+oktOctTarget+" (oktal) = "+correct+" (desimal).";
-    fb.className="feedback ok"; awardXP(5);
+    const dapatXP = awardPracticeXPOnce("oktOct", 5);
+    fb.textContent = "✅ Benar! "+oktOctTarget+" (oktal) = "+correct+" (desimal)." + (dapatXP ? "" : " (XP latihan ini sudah pernah kamu dapat)");
+    fb.className="feedback ok";
   } else {
     fb.textContent = "❌ Belum tepat. Ingat: kalikan tiap digit dengan pangkat 8.";
     fb.className="feedback bad";
@@ -663,8 +704,9 @@ function checkHexColor(){
   const correct = hexRedTarget.toString(16).padStart(2,"0").toUpperCase();
   const fb = document.getElementById("hexFeedback1");
   if(ans === correct){
-    fb.textContent = "✅ Benar! "+hexRedTarget+" = "+correct+" dalam heks.";
-    fb.className="feedback ok"; awardXP(5);
+    const dapatXP = awardPracticeXPOnce("hexColor", 5);
+    fb.textContent = "✅ Benar! "+hexRedTarget+" = "+correct+" dalam heks." + (dapatXP ? "" : " (XP latihan ini sudah pernah kamu dapat)");
+    fb.className="feedback ok";
   } else {
     fb.textContent = "❌ Belum tepat. Coba bagi "+hexRedTarget+" dengan 16.";
     fb.className="feedback bad";
@@ -683,8 +725,9 @@ function checkHexFromDec(){
   const correct = hexDecTarget.toString(16).toUpperCase();
   const fb = document.getElementById("hexFeedback2");
   if(ans === correct){
-    fb.textContent = "✅ Benar! "+hexDecTarget+" = "+correct+" (heks).";
-    fb.className="feedback ok"; awardXP(5);
+    const dapatXP = awardPracticeXPOnce("hexDec", 5);
+    fb.textContent = "✅ Benar! "+hexDecTarget+" = "+correct+" (heks)." + (dapatXP ? "" : " (XP latihan ini sudah pernah kamu dapat)");
+    fb.className="feedback ok";
   } else {
     fb.textContent = "❌ Belum tepat. Ingat digit A-F untuk nilai 10-15.";
     fb.className="feedback bad";
@@ -791,8 +834,11 @@ function finishQuiz(){
   const nextMap = {bit:"okt", okt:"hex", hex:"boss", boss:null};
   const meta = LEVEL_META[level];
 
-  let xpGain = correct*10 + (passed?20:0);
-  awardXP(xpGain);
+  const xpGain = correct*10 + (passed?20:0);
+  const prevBest = state.bestQuizXP[level] || 0;
+  const addXP = Math.max(0, xpGain - prevBest);
+  if(xpGain > prevBest) state.bestQuizXP[level] = xpGain;
+  awardXP(addXP);
   if(passed) markComplete(level, nextMap[level]);
   sendScoreToTeacher(level, correct, total, xpGain, passed);
 
@@ -801,7 +847,7 @@ function finishQuiz(){
     <div class="panel-body">
       <div class="quiz-result">
         <div class="big" style="color:var(--${meta.color})">${correct}/${total}</div>
-        <p>${pct}% benar &middot; +${xpGain} XP</p>
+        <p>${pct}% benar &middot; +${addXP} XP${addXP < xpGain ? " (skor terbaikmu di level ini sudah tercatat sebelumnya)" : ""}</p>
         ${passed
           ? `<p style="color:var(--ok);font-weight:700;">🎉 Lulus! ${nextMap[level] ? "Level berikutnya sudah terbuka." : "Kamu Juara Sistem Bilangan!"}</p>`
           : `<p style="color:var(--bad);font-weight:700;">Belum lulus (minimal 60%). Pelajari lagi materinya, lalu coba kuis sekali lagi!</p>`
@@ -887,7 +933,10 @@ function finishBoss(timedOut){
   const correct = bossState.correct;
   const passed = correct >= Math.ceil(total*0.6);
   const xpGain = correct*8 + (passed?40:0);
-  awardXP(xpGain);
+  const prevBest = state.bestQuizXP.boss || 0;
+  const addXP = Math.max(0, xpGain - prevBest);
+  if(xpGain > prevBest) state.bestQuizXP.boss = xpGain;
+  awardXP(addXP);
   if(passed) markComplete("boss", null);
   sendScoreToTeacher("boss", correct, total, xpGain, passed);
 
@@ -896,7 +945,7 @@ function finishBoss(timedOut){
     <div class="panel-body">
       <div class="quiz-result">
         <div class="big" style="color:var(--boss)">${correct}/${total}</div>
-        <p>${timedOut ? "Waktu habis! " : ""}+${xpGain} XP</p>
+        <p>${timedOut ? "Waktu habis! " : ""}+${addXP} XP${addXP < xpGain ? " (skor terbaikmu sudah tercatat sebelumnya)" : ""}</p>
         ${passed
           ? `<p style="color:var(--ok);font-weight:700;">🏆 Selamat! Kamu resmi jadi Juara Sistem Bilangan!</p>`
           : `<p style="color:var(--bad);font-weight:700;">Belum lulus (minimal 60%). Kuatkan lagi tiap level, lalu coba sekali lagi!</p>`
